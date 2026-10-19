@@ -12,7 +12,7 @@ app = FastAPI(
 )
 
 # 발급받으신 Gemini API 키
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")css
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 
 
 # --- DB 초기화 및 관리 ---
@@ -250,16 +250,23 @@ def home_page():
             }
             
             input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--accent-blue); cursor: pointer; }
-            /* 📱 모바일 디바이스 최적화 (768px 이하) */
+            /* 📱 모바일 디바이스 완벽 대응 반응형 CSS */
             @media (max-width: 768px) {
                 body {
                     padding: 10px !important;
                 }
                 .container {
-                    padding: 8px !important;
                     width: 100% !important;
+                    max-width: 100% !important;
+                    padding: 0 !important;
                 }
-                /* 그리드 및 카드 레이아웃 모바일 1열/2열 자동 세로 정렬 */
+                /* 헤더 반응형 */
+                .header {
+                    flex-direction: column !important;
+                    align-items: flex-start !important;
+                    gap: 8px !important;
+                }
+                /* KPI 카드 2열 배치 */
                 .kpi-grid, .grid {
                     grid-template-columns: repeat(2, 1fr) !important;
                     gap: 10px !important;
@@ -267,28 +274,25 @@ def home_page():
                 .kpi-card {
                     padding: 12px !important;
                 }
-                .kpi-value {
-                    font-size: 1.4rem !important;
-                }
-                .card {
-                    padding: 12px !important;
-                }
-                /* 테이블 좌우 터치 스크롤 처리 */
-                .table-responsive {
+                /* 신규 업무 할당 폼 세로 정렬 */
+                form, .form-group, .input-group, div[style*="flex"] {
+                    flex-direction: column !important;
                     width: 100% !important;
-                    overflow-x: auto !important;
-                    -webkit-overflow-scrolling: touch;
                 }
-                table {
-                    min-width: 550px !important;
+                input, select, button {
+                    width: 100% !important;
+                    margin-bottom: 6px !important;
                 }
-                th, td {
-                    padding: 8px 10px !important;
-                    font-size: 0.82rem !important;
+                /* 업무 목록 카드 내부 요소 세로 정렬 */
+                .todo-item, li, div[style*="justify-content: space-between"] {
+                    flex-direction: column !important;
+                    align-items: flex-start !important;
+                    gap: 8px !important;
                 }
-                /* 타이틀 크기 조정 */
-                h1 {
-                    font-size: 1.25rem !important;
+                /* 업무 타이틀 줄바꿈 및 전체 너비 확보 */
+                .todo-title, td, span {
+                    white-space: normal !important;
+                    word-break: break-all !important;
                 }
             }
         </style>
