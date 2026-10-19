@@ -250,25 +250,23 @@ def home_page():
             }
             
             input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--accent-blue); cursor: pointer; }
-            /* 📱 모바일 전용 반응형 완벽 보정 (768px 이하) */
+            /* 📱 모바일 전용 반응형 완벽 최적화 (768px 이하) */
             @media (max-width: 768px) {
                 body {
-                    padding: 10px !important;
+                    padding: 8px !important;
                 }
                 .container {
                     width: 100% !important;
                     max-width: 100% !important;
                     padding: 0 !important;
                 }
-
-                /* 1. 헤더 영역 */
-                .header, div[class*="header"] {
+                .header {
                     flex-direction: column !important;
                     align-items: flex-start !important;
                     gap: 6px !important;
                 }
 
-                /* 2. KPI 카드를 모바일 2열 정렬 */
+                /* KPI 카드 배치 */
                 .kpi-grid, .grid {
                     grid-template-columns: repeat(2, 1fr) !important;
                     gap: 8px !important;
@@ -277,7 +275,7 @@ def home_page():
                     padding: 12px !important;
                 }
 
-                /* 3. 신규 업무 일정 할당 - 세로 1열 꽉 차게 정렬 */
+                /* 신규 업무 일정 할당 - 세로 1열 정렬 (완성된 스타일) */
                 form, 
                 div[class*="form"],
                 .card form {
@@ -296,68 +294,74 @@ def home_page():
                     max-width: 100% !important;
                     box-sizing: border-box !important;
                     margin: 0 !important;
-                    height: 42px !important; /* 모바일 터치하기 적합한 높이 */
+                    height: 42px !important;
                 }
 
-                /* 4. 진행 중인 업무 목록 - 카드형 세로 레이아웃 보정 */
+                /* 🎯 진행 중인 업무 목록 - 카드 형태 완벽 보정 */
+                /* 각 업무 항목 카드 강제 세로 배치 */
+                li, 
                 .todo-item, 
-                div[class*="todo"],
-                li[class*="todo"] {
-                    display: flex !important;
+                div[style*="border-bottom"],
+                div[style*="background"],
+                div[style*="padding"] {
+                    box-sizing: border-box !important;
+                }
+
+                /* 배지(높음, 업무, D-day) 글자 세로 찢어짐 방지 및 가로 정렬 */
+                span, div, a, p {
+                    writing-mode: horizontal-tb !important;
+                    word-break: break-word !important;
+                }
+
+                .badge, 
+                span[class*="badge"], 
+                div[class*="badge"],
+                span[style*="background"],
+                div[style*="background"] {
+                    display: inline-flex !important;
+                    align-items: center !important;
+                    justify-content: center !important;
+                    width: auto !important;
+                    min-width: unset !important;
+                    padding: 4px 10px !important;
+                    font-size: 0.78rem !important;
+                    white-space: nowrap !important;
+                    height: auto !important;
+                    line-height: 1.2 !important;
+                }
+
+                /* 카드 내부의 모든 가로 레이아웃을 세로 카드형 구조로 변경 */
+                .card div[style*="display: flex"],
+                .card div[style*="display:flex"],
+                div[style*="justify-content: space-between"] {
                     flex-direction: column !important;
                     align-items: flex-start !important;
-                    gap: 12px !important;
-                    padding: 14px !important;
+                    width: 100% !important;
+                    gap: 10px !important;
                 }
 
-                /* 배지(높음/업무/D-day) 찌그러짐 방지 & 가로 정렬 */
-                .badge, 
-                span[class*="badge"],
-                div[class*="badge"] {
-                    display: inline-block !important;
-                    white-space: nowrap !important; /* 글자 세로로 안 깨지게 고정 */
-                    writing-mode: horizontal-tb !important;
-                    padding: 4px 8px !important;
-                    font-size: 0.75rem !important;
-                    letter-spacing: normal !important;
-                }
-
-                /* 배지들과 체크박스 그룹 가로 배열 */
-                .todo-meta, 
-                div[style*="display: flex"] {
+                /* 체크박스와 배지들을 묶는 영역은 가로로 정렬 */
+                div[style*="display: flex"] > div:first-child,
+                .todo-left-group {
                     display: flex !important;
                     flex-direction: row !important;
                     flex-wrap: wrap !important;
                     align-items: center !important;
-                    gap: 6px !important;
-                    width: 100% !important;
-                }
-
-                /* 수정/삭제 버튼 하단 가로 배치 */
-                .todo-actions,
-                div[style*="gap"] > button {
-                    display: flex !important;
-                    flex-direction: row !important;
-                    width: 100% !important;
                     gap: 8px !important;
-                    margin-top: 6px !important;
+                    width: 100% !important;
                 }
 
-                .todo-actions button,
-                button[onclick*="delete"],
-                button[onclick*="edit"] {
-                    flex: 1 !important;
-                    width: 50% !important;
-                    height: 36px !important;
-                }
-
-                /* 업무 제목 텍스트 자동 줄바꿈 처리 */
-                .todo-title, 
-                div[style*="font-weight"], 
-                p, span {
-                    white-space: normal !important;
-                    word-break: break-all !important;
-                    line-height: 1.4 !important;
+                /* 수정/삭제 버튼 하단 넓은 버튼으로 배치 */
+                button[onclick*="delete"], 
+                button[onclick*="edit"],
+                a[href*="delete"], 
+                a[href*="edit"] {
+                    width: 48% !important;
+                    height: 38px !important;
+                    display: inline-flex !important;
+                    align-items: center !important;
+                    justify-content: center !important;
+                    margin-top: 4px !important;
                 }
             }
         </style>
