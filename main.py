@@ -1,4 +1,5 @@
 import datetime
+import html
 import os
 import sqlite3
 from fastapi import FastAPI, Form, Request
@@ -15,9 +16,15 @@ app = FastAPI(
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 
 
+# --- DB connection helper ---
+def get_db():
+    conn = sqlite3.connect("todo.db", timeout=10)
+    return conn
+
+
 # --- DB 초기화 및 관리 ---
 def init_db():
-    conn = sqlite3.connect("todo.db")
+    conn = get_db()
     cursor = conn.cursor()
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS todos (
@@ -39,7 +46,7 @@ init_db()
 # --- 메인 페이지 ---
 @app.get("/", response_class=HTMLResponse, include_in_schema=False)
 def home_page():
-    conn = sqlite3.connect("todo.db")
+    conn = get_db()
     cursor = conn.cursor()
     cursor.execute("SELECT id, date, task, category, priority, is_done FROM todos ORDER BY id DESC")
     todos = cursor.fetchall()
@@ -74,6 +81,10 @@ def home_page():
         checked_attr = "checked" if t_done else ""
         done_style = "text-decoration: line-through; opacity: 0.5;" if t_done else ""
 
+        # JS 탈출 및 HTML 이스케이프 처리
+        safe_task = html.escape(t_task)
+        js_task = safe_task.replace("'", "\\'").replace('"', '\\"')
+
         items_html += f"""
         <div class="todo-card">
             <div class="todo-top-row">
@@ -85,10 +96,10 @@ def home_page():
                 </div>
             </div>
             <div class="todo-title" style="{done_style}">
-                [{t_date}] {t_task}
+                [{t_date}] {safe_task}
             </div>
             <div class="todo-actions">
-                <button class="btn-action" onclick="editTodo({t_id}, '{t_task}')">수정</button>
+                <button class="btn-action" onclick="editTodo({t_id}, '{js_task}')">수정</button>
                 <button class="btn-action btn-del" onclick="deleteTodo({t_id})">삭제</button>
             </div>
         </div>
@@ -203,7 +214,6 @@ def home_page():
                 margin-bottom: 16px;
             }}
 
-            /* 신규 일정 입력 폼 레아아웃 */
             .form-grid {{
                 display: flex;
                 gap: 10px;
@@ -303,14 +313,12 @@ def home_page():
                 margin-bottom: 12px;
             }}
 
-            /* 📱 모바일 디바이스 완벽 최적화 (768px 이하) */
             @media (max-width: 768px) {{
                 body {{ padding: 10px; }}
                 .kpi-grid {{ grid-template-columns: repeat(2, 1fr); gap: 8px; }}
                 .kpi-card {{ padding: 12px; }}
                 .kpi-value {{ font-size: 1.4rem; }}
 
-                /* 폼 요소를 모바일에서 세로 100% 배치 */
                 .form-grid {{
                     flex-direction: column !important;
                     width: 100% !important;
@@ -319,7 +327,6 @@ def home_page():
                     width: 100% !important;
                 }}
 
-                /* 업무 목록 카드를 모바일 세로 배치 */
                 .todo-card {{
                     flex-direction: column !important;
                     align-items: flex-start !important;
@@ -458,7 +465,7 @@ def home_page():
 # --- API 엔드포인트 ---
 @app.post("/add")
 def add_todo(date: str = Form(...), task: str = Form(...), category: str = Form("업무"), priority: str = Form("보통")):
-    conn = sqlite3.connect("todo.db")
+    conn = get_db()
     cursor = conn.cursor()
     cursor.execute("INSERT INTO todos (date, task, category, priority) VALUES (?, ?, ?, ?)", (date, task, category, priority))
     conn.commit()
@@ -468,7 +475,7 @@ def add_todo(date: str = Form(...), task: str = Form(...), category: str = Form(
 
 @app.post("/toggle/{todo_id}")
 def toggle_todo(todo_id: int, is_done: int):
-    conn = sqlite3.connect("todo.db")
+    conn = get_db()
     cursor = conn.cursor()
     cursor.execute("UPDATE todos SET is_done = ? WHERE id = ?", (is_done, todo_id))
     conn.commit()
@@ -478,9 +485,10 @@ def toggle_todo(todo_id: int, is_done: int):
 
 @app.post("/delete/{todo_id}")
 def delete_todo(todo_id: int):
-    conn = sqlite3.connect("todo.db")
+    conn = get_db()
     cursor = conn.cursor()
-    cursor.execute("DELETE FROM todos WHERE id = ?", (todo_id))
+    # 튜플 파라미터 적용 (todo_id,)
+    cursor.execute("DELETE FROM todos WHERE id = ?", (todo_id,))
     conn.commit()
     conn.close()
     return {"status": "success"}
@@ -488,7 +496,7 @@ def delete_todo(todo_id: int):
 
 @app.post("/edit/{todo_id}")
 def edit_todo(todo_id: int, task: str):
-    conn = sqlite3.connect("todo.db")
+    conn = get_db()
     cursor = conn.cursor()
     cursor.execute("UPDATE todos SET task = ? WHERE id = ?", (task, todo_id))
     conn.commit()
@@ -499,9 +507,9 @@ def edit_todo(todo_id: int, task: str):
 @app.get("/ai-briefing")
 def ai_briefing():
     if not GEMINI_API_KEY:
-        return {"briefing": "⚠️ Gemini API 키가 설정되지 않았습니다. Render 환경변수에 GEMINI_API_KEY를 등록해 주세요."}
+        return {"briefing": "⚠️ Gemini API 키가 설정되지 않았습니다. 환경변수에 GEMINI_API_KEY를 등록해 주세요."}
 
-    conn = sqlite3.connect("todo.db")
+    conn = get_db()
     cursor = conn.cursor()
     cursor.execute("SELECT date, task, category, priority FROM todos WHERE is_done = 0 ORDER BY date ASC")
     pending = cursor.fetchall()
@@ -513,10 +521,12 @@ def ai_briefing():
     todo_text = "\n".join([f"- [{p[0]}] [{p[2]}/{p[3]}] {p[1]}" for p in pending])
     prompt = f"다음은 현재 미완료된 경영 일정 및 업무 리스트입니다:\n{todo_text}\n\n경영진을 위해 업무 우선순위 분석 및 실행 리스크 브리핑 리포트를 간결하게 작성해 주세요."
 
+# --- 수정 위치: ai_briefing() 함수 내부 ---
+
     try:
         client = genai.Client(api_key=GEMINI_API_KEY)
         response = client.models.generate_content(
-            model="gemini-2.5-flash",
+            model="gemini-3.8-flash",  # <--- 이 부분을 gemini-3.8-flash 로 변경!
             contents=prompt,
         )
         return {"briefing": response.text}
