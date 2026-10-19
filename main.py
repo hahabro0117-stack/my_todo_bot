@@ -1,4 +1,4 @@
-<<<<<<< HEAD
+import time
 import datetime
 import html
 import os
@@ -1056,15 +1056,18 @@ def ai_briefing():
     todo_text = "\n".join([f"- [{p[0]}] [{p[2]}/{p[3]}] {p[1]}" for p in pending])
     prompt = f"다음은 현재 미완료된 경영 일정 및 업무 리스트입니다:\n{todo_text}\n\n경영진을 위해 업무 우선순위 분석 및 실행 리스크 브리핑 리포트를 간결하게 작성해 주세요."
 
-# --- 수정 위치: ai_briefing() 함수 내부 ---
-
-    try:
-        client = genai.Client(api_key=GEMINI_API_KEY)
-        response = client.models.generate_content(
-            model="gemini-3.8-flash",  # <--- 이 부분을 gemini-3.8-flash 로 변경!
-            contents=prompt,
-        )
-        return {"briefing": response.text}
-    except Exception as e:
->>>>>>> ef5a3f06f1dc352f0d4d79c1b09335d616a91269
-        return {"briefing": f"❌ Gemini AI 호출 실패: {str(e)}"}
+    # 503 과부하 에러 대비 3회 자동 재시도 로직
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            client = genai.Client(api_key=GEMINI_API_KEY)
+            response = client.models.generate_content(
+                model="gemini-3.8-flash",
+                contents=prompt,
+            )
+            return {"briefing": response.text}
+        except Exception as e:
+            if "503" in str(e) and attempt < max_retries - 1:
+                time.sleep(2)
+                continue
+            return {"briefing": f"❌ Gemini AI 호출 실패: {str(e)}"}
