@@ -250,7 +250,7 @@ def home_page():
             }
             
             input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--accent-blue); cursor: pointer; }
-            /* 📱 모바일 디바이스 완벽 대응 반응형 CSS */
+            /* 📱 모바일 전용 반응형 완벽 보정 (768px 이하) */
             @media (max-width: 768px) {
                 body {
                     padding: 10px !important;
@@ -260,39 +260,104 @@ def home_page():
                     max-width: 100% !important;
                     padding: 0 !important;
                 }
-                /* 헤더 반응형 */
-                .header {
+
+                /* 1. 헤더 영역 */
+                .header, div[class*="header"] {
                     flex-direction: column !important;
                     align-items: flex-start !important;
-                    gap: 8px !important;
+                    gap: 6px !important;
                 }
-                /* KPI 카드 2열 배치 */
+
+                /* 2. KPI 카드를 모바일 2열 정렬 */
                 .kpi-grid, .grid {
                     grid-template-columns: repeat(2, 1fr) !important;
-                    gap: 10px !important;
+                    gap: 8px !important;
                 }
                 .kpi-card {
                     padding: 12px !important;
                 }
-                /* 신규 업무 할당 폼 세로 정렬 */
-                form, .form-group, .input-group, div[style*="flex"] {
+
+                /* 3. 신규 업무 일정 할당 - 세로 1열 꽉 차게 정렬 */
+                form, 
+                div[class*="form"],
+                .card form {
+                    display: flex !important;
                     flex-direction: column !important;
                     width: 100% !important;
+                    gap: 10px !important;
                 }
-                input, select, button {
+
+                form input, 
+                form select, 
+                form button,
+                form textarea,
+                .card form * {
                     width: 100% !important;
-                    margin-bottom: 6px !important;
+                    max-width: 100% !important;
+                    box-sizing: border-box !important;
+                    margin: 0 !important;
+                    height: 42px !important; /* 모바일 터치하기 적합한 높이 */
                 }
-                /* 업무 목록 카드 내부 요소 세로 정렬 */
-                .todo-item, li, div[style*="justify-content: space-between"] {
+
+                /* 4. 진행 중인 업무 목록 - 카드형 세로 레이아웃 보정 */
+                .todo-item, 
+                div[class*="todo"],
+                li[class*="todo"] {
+                    display: flex !important;
                     flex-direction: column !important;
                     align-items: flex-start !important;
-                    gap: 8px !important;
+                    gap: 12px !important;
+                    padding: 14px !important;
                 }
-                /* 업무 타이틀 줄바꿈 및 전체 너비 확보 */
-                .todo-title, td, span {
+
+                /* 배지(높음/업무/D-day) 찌그러짐 방지 & 가로 정렬 */
+                .badge, 
+                span[class*="badge"],
+                div[class*="badge"] {
+                    display: inline-block !important;
+                    white-space: nowrap !important; /* 글자 세로로 안 깨지게 고정 */
+                    writing-mode: horizontal-tb !important;
+                    padding: 4px 8px !important;
+                    font-size: 0.75rem !important;
+                    letter-spacing: normal !important;
+                }
+
+                /* 배지들과 체크박스 그룹 가로 배열 */
+                .todo-meta, 
+                div[style*="display: flex"] {
+                    display: flex !important;
+                    flex-direction: row !important;
+                    flex-wrap: wrap !important;
+                    align-items: center !important;
+                    gap: 6px !important;
+                    width: 100% !important;
+                }
+
+                /* 수정/삭제 버튼 하단 가로 배치 */
+                .todo-actions,
+                div[style*="gap"] > button {
+                    display: flex !important;
+                    flex-direction: row !important;
+                    width: 100% !important;
+                    gap: 8px !important;
+                    margin-top: 6px !important;
+                }
+
+                .todo-actions button,
+                button[onclick*="delete"],
+                button[onclick*="edit"] {
+                    flex: 1 !important;
+                    width: 50% !important;
+                    height: 36px !important;
+                }
+
+                /* 업무 제목 텍스트 자동 줄바꿈 처리 */
+                .todo-title, 
+                div[style*="font-weight"], 
+                p, span {
                     white-space: normal !important;
                     word-break: break-all !important;
+                    line-height: 1.4 !important;
                 }
             }
         </style>
