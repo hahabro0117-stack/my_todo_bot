@@ -1,8 +1,8 @@
 import datetime
 import os
 import sqlite3
-from fastapi import FastAPI
-from fastapi.responses import HTMLResponse
+from fastapi import FastAPI, Form, Request
+from fastapi.responses import HTMLResponse, RedirectResponse
 from google import genai
 
 app = FastAPI(
@@ -11,7 +11,7 @@ app = FastAPI(
     version="4.0.0",
 )
 
-# 발급받으신 Gemini API 키
+# 발급받으신 Gemini API 키 (서버 환경변수에서 로드)
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 
 
@@ -36,591 +36,489 @@ def init_db():
 init_db()
 
 
-def get_db_tasks():
-    conn = sqlite3.connect("todo.db")
-    cursor = conn.cursor()
-    cursor.execute(
-        "SELECT id, date, task, category, priority, is_done FROM todos ORDER BY is_done ASC, date ASC, id DESC"
-    )
-    rows = cursor.fetchall()
-    conn.close()
-
-    today = datetime.date.today()
-    result = []
-    for r in rows:
-        try:
-            task_date = datetime.datetime.strptime(r[1], "%Y-%m-%d").date()
-            diff = (task_date - today).days
-            if diff == 0:
-                d_day = "D-Day"
-            elif diff > 0:
-                d_day = f"D-{diff}"
-            else:
-                d_day = f"D+{abs(diff)}"
-        except Exception:
-            d_day = "-"
-
-        result.append({
-            "id": r[0],
-            "date": r[1],
-            "task": r[2],
-            "category": r[3] if r[3] else "업무",
-            "priority": r[4] if r[4] else "보통",
-            "is_done": bool(r[5]),
-            "d_day": d_day,
-        })
-    return result
-
-
-# --- 1. 최고급 Premium SaaS UI ---
+# --- 메인 페이지 ---
 @app.get("/", response_class=HTMLResponse, include_in_schema=False)
 def home_page():
-    return """
+    conn = sqlite3.connect("todo.db")
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, date, task, category, priority, is_done FROM todos ORDER BY id DESC")
+    todos = cursor.fetchall()
+    conn.close()
+
+    total_count = len(todos)
+    done_count = sum(1 for t in todos if t[5] == 1)
+    pending_count = total_count - done_count
+    progress_rate = int((done_count / total_count * 100)) if total_count > 0 else 0
+
+    today_str = datetime.date.today().strftime("%Y-%m-%d")
+
+    # 업무 목록 카드 HTML 생성
+    items_html = ""
+    for t in todos:
+        t_id, t_date, t_task, t_cat, t_prio, t_done = t
+        
+        # D-Day 계산
+        try:
+            target_date = datetime.datetime.strptime(t_date, "%Y-%m-%d").date()
+            days_left = (target_date - datetime.date.today()).days
+            if days_left == 0:
+                dday_str = "D-Day"
+            elif days_left > 0:
+                dday_str = f"D-{days_left}"
+            else:
+                dday_str = f"D+{abs(days_left)}"
+        except Exception:
+            dday_str = "D-?"
+
+        prio_color = "#ef4444" if t_prio == "높음" else ("#f59e0b" if t_prio == "보통" else "#3b82f6")
+        checked_attr = "checked" if t_done else ""
+        done_style = "text-decoration: line-through; opacity: 0.5;" if t_done else ""
+
+        items_html += f"""
+        <div class="todo-card">
+            <div class="todo-top-row">
+                <input type="checkbox" onchange="toggleDone({t_id}, this.checked)" {checked_attr}>
+                <div class="badge-group">
+                    <span class="badge" style="background: rgba(239,68,68,0.15); color: {prio_color};">{t_prio}</span>
+                    <span class="badge" style="background: rgba(59,130,246,0.15); color: #60a5fa;">{t_cat}</span>
+                    <span class="badge" style="background: rgba(139,92,246,0.15); color: #a78bfa;">{dday_str}</span>
+                </div>
+            </div>
+            <div class="todo-title" style="{done_style}">
+                [{t_date}] {t_task}
+            </div>
+            <div class="todo-actions">
+                <button class="btn-action" onclick="editTodo({t_id}, '{t_task}')">수정</button>
+                <button class="btn-action btn-del" onclick="deleteTodo({t_id})">삭제</button>
+            </div>
+        </div>
+        """
+
+    if not items_html:
+        items_html = '<div style="text-align:center; color:#9ca3af; padding:20px;">등록된 과제가 없습니다.</div>'
+
+    html_content = f"""
     <!DOCTYPE html>
     <html lang="ko">
-   <head>
-    <meta charset="UTF-8">
-    <!-- 모바일 비율 자동 조절을 위한 필수 메타 태그 (추가/확인) -->
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-    <title>Executive Task Intelligence</title>
-    ...
-        <link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+        <title>Executive Task Intelligence</title>
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
         <style>
-            :root {
+            :root {{
                 --bg: #090d16;
                 --panel: #111827;
                 --panel-border: #1f2937;
-                --panel-hover: #172033;
                 --text-primary: #f9fafb;
                 --text-secondary: #9ca3af;
-                --text-muted: #6b7280;
                 --accent-blue: #3b82f6;
                 --accent-indigo: #6366f1;
                 --accent-emerald: #10b981;
-                --accent-rose: #f43f5e;
                 --accent-amber: #f59e0b;
                 --radius-lg: 12px;
                 --radius-md: 8px;
-            }
+            }}
 
-            * { box-sizing: border-box; }
-            
-            body { 
-                font-family: "Pretendard Variable", -apple-system, BlinkMacSystemFont, system-ui, Roboto, sans-serif; 
-                padding: 40px 20px; 
-                max-width: 900px; 
-                margin: auto; 
-                background-color: var(--bg); 
+            * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+
+            body {{
+                font-family: 'Pretendard', system-ui, sans-serif;
+                background-color: var(--bg);
                 color: var(--text-primary);
+                padding: 20px;
                 line-height: 1.5;
-                -webkit-font-smoothing: antialiased;
-            }
+            }}
 
-            /* 헤더 디자인 */
-            .header {
+            .container {{
+                max-width: 1000px;
+                margin: 0 auto;
+                width: 100%;
+            }}
+
+            .header {{
                 display: flex;
                 justify-content: space-between;
-                align-items: flex-end;
-                margin-bottom: 28px;
-                padding-bottom: 20px;
-                border-bottom: 1px solid var(--panel-border);
-            }
-            .header-title h1 { font-size: 22px; font-weight: 800; letter-spacing: -0.5px; margin: 0; color: #ffffff; }
-            .header-title p { font-size: 13px; color: var(--text-secondary); margin: 4px 0 0 0; }
-            .status-badge { 
-                display: inline-flex; 
-                align-items: center; 
-                gap: 6px; 
-                padding: 4px 10px; 
-                background: rgba(16, 185, 129, 0.1); 
-                border: 1px solid rgba(16, 185, 129, 0.2); 
-                border-radius: 20px; 
-                font-size: 12px; 
-                color: var(--accent-emerald); 
+                align-items: center;
+                margin-bottom: 20px;
+            }}
+
+            .header h1 {{
+                font-size: 1.5rem;
+                font-weight: 700;
+                background: linear-gradient(to right, #60a5fa, #a78bfa);
+                -webkit-background-clip: text;
+                -webkit-text-fill-color: transparent;
+            }}
+
+            .status-badge {{
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                padding: 4px 10px;
+                background: rgba(16, 185, 129, 0.1);
+                border: 1px solid rgba(16, 185, 129, 0.3);
+                border-radius: 20px;
+                color: #34d399;
+                font-size: 0.8rem;
+            }}
+
+            .status-dot {{
+                width: 6px;
+                height: 6px;
+                background-color: #34d399;
+                border-radius: 50%;
+            }}
+
+            /* KPI Grid */
+            .kpi-grid {{
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+                gap: 12px;
+                margin-bottom: 20px;
+            }}
+
+            .kpi-card {{
+                background-color: var(--panel);
+                border: 1px solid var(--panel-border);
+                border-radius: var(--radius-lg);
+                padding: 16px;
+            }}
+
+            .kpi-label {{ font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 6px; }}
+            .kpi-value {{ font-size: 1.8rem; font-weight: 700; }}
+
+            /* Form & Cards */
+            .card {{
+                background-color: var(--panel);
+                border: 1px solid var(--panel-border);
+                border-radius: var(--radius-lg);
+                padding: 20px;
+                margin-bottom: 20px;
+            }}
+
+            .card-title {{
+                font-size: 1.1rem;
                 font-weight: 600;
-            }
-            .status-dot { width: 6px; height: 6px; background: var(--accent-emerald); border-radius: 50%; display: inline-block; }
+                margin-bottom: 16px;
+            }}
 
-            /* KPI 지표 그리드 */
-            .kpi-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 24px; }
-            .kpi-card { background: var(--panel); border: 1px solid var(--panel-border); border-radius: var(--radius-lg); padding: 18px 20px; }
-            .kpi-label { font-size: 12px; color: var(--text-muted); font-weight: 500; margin-bottom: 6px; }
-            .kpi-value { font-size: 24px; font-weight: 700; color: #ffffff; letter-spacing: -0.5px; }
+            /* 신규 일정 입력 폼 레아아웃 */
+            .form-grid {{
+                display: flex;
+                gap: 10px;
+                flex-wrap: wrap;
+            }}
 
-            /* 프로그레스 바 */
-            .progress-container { background: #1f2937; border-radius: 10px; height: 6px; width: 100%; margin-top: 10px; overflow: hidden; }
-            .progress-bar { background: linear-gradient(90deg, var(--accent-blue), var(--accent-indigo)); height: 100%; width: 0%; transition: width 0.5s ease; }
-
-            /* 카드 패널 */
-            .card { 
-                background: var(--panel); 
-                border: 1px solid var(--panel-border); 
-                border-radius: var(--radius-lg); 
-                padding: 22px 24px; 
-                margin-bottom: 24px; 
-                box-shadow: 0 4px 20px rgba(0,0,0,0.25);
-            }
-            .card-header { font-size: 14px; font-weight: 700; color: #ffffff; margin-bottom: 18px; display: flex; align-items: center; justify-content: space-between; }
-            
-            /* 입력 필드 레이아웃 */
-            .form-grid { display: grid; grid-template-columns: 140px 120px 140px 1fr 90px; gap: 10px; }
-            input, select, button { 
-                background: #192233; 
-                border: 1px solid #2d3a4f; 
-                color: var(--text-primary); 
-                padding: 10px 14px; 
-                border-radius: var(--radius-md); 
-                font-size: 13px; 
-                font-family: inherit;
+            .form-control {{
+                background: #1f2937;
+                border: 1px solid #374151;
+                color: var(--text-primary);
+                padding: 10px 14px;
+                border-radius: var(--radius-md);
+                font-size: 0.9rem;
                 outline: none;
-                transition: all 0.2s;
-            }
-            input:focus, select:focus { border-color: var(--accent-blue); box-shadow: 0 0 0 2px rgba(59,130,246,0.25); }
-            
-            .btn-submit { 
-                background: var(--accent-blue); 
-                border: none; 
-                color: #ffffff; 
-                font-weight: 700; 
-                cursor: pointer; 
-                transition: background 0.2s;
-            }
-            .btn-submit:hover { background: #2563eb; }
+            }}
 
-            /* 리스트 스타일 */
-            ul { list-style: none; padding: 0; margin: 0; }
-            li { 
-                background: #151d2a; 
-                border: 1px solid var(--panel-border); 
-                border-radius: var(--radius-md); 
-                padding: 14px 18px; 
-                margin-bottom: 10px; 
-                display: flex; 
-                align-items: center; 
-                justify-content: space-between; 
-                transition: all 0.2s;
-            }
-            li:hover { background: var(--panel-hover); border-color: #2d3a4f; }
-            li.done { opacity: 0.5; background: #0e131f; }
-            li.done .task-title { text-decoration: line-through; color: var(--text-muted); }
+            .form-control:focus {{ border-color: var(--accent-blue); }}
 
-            .task-left { display: flex; align-items: center; gap: 12px; flex: 1; }
-            
-            /* 마이크로 태그 배지 */
-            .tag { padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; letter-spacing: -0.2px; }
-            .tag-high { background: rgba(244, 63, 94, 0.15); color: #fda4af; border: 1px solid rgba(244, 63, 94, 0.3); }
-            .tag-mid { background: rgba(245, 158, 11, 0.15); color: #fde68a; border: 1px solid rgba(245, 158, 11, 0.3); }
-            .tag-low { background: rgba(107, 114, 128, 0.15); color: #d1d5db; border: 1px solid rgba(107, 114, 128, 0.3); }
-            .tag-cat { background: rgba(59, 130, 246, 0.15); color: #93c5fd; border: 1px solid rgba(59, 130, 246, 0.3); }
-            .tag-dday { background: rgba(99, 102, 241, 0.15); color: #c7d2fe; border: 1px solid rgba(99, 102, 241, 0.3); }
+            .btn-primary {{
+                background: var(--accent-blue);
+                color: white;
+                border: none;
+                padding: 10px 20px;
+                border-radius: var(--radius-md);
+                font-weight: 600;
+                cursor: pointer;
+            }}
 
-            .actions { display: flex; gap: 6px; }
-            .btn-action { padding: 5px 10px; font-size: 12px; background: #1f2937; border: 1px solid #374151; color: var(--text-secondary); border-radius: 4px; cursor: pointer; }
-            .btn-action:hover { background: #374151; color: #ffffff; }
-            .btn-del:hover { background: rgba(244, 63, 94, 0.2); color: var(--accent-rose); border-color: rgba(244, 63, 94, 0.4); }
+            /* 업무 목록 카드 디자인 */
+            .todo-card {{
+                background: rgba(31, 41, 55, 0.4);
+                border: 1px solid var(--panel-border);
+                border-radius: var(--radius-md);
+                padding: 14px;
+                margin-bottom: 10px;
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 12px;
+            }}
 
-            /* AI 브리핑 스페셜 컨테이너 */
-            .ai-card { background: linear-gradient(135deg, #111827 0%, #171e31 100%); border: 1px solid #26334d; }
-            .btn-ai { 
-                background: linear-gradient(90deg, var(--accent-indigo), var(--accent-blue)); 
-                border: none; 
-                color: #ffffff; 
-                font-weight: 700; 
-                width: 100%; 
-                padding: 12px; 
-                border-radius: var(--radius-md); 
-                cursor: pointer; 
-                font-size: 13px;
-                box-shadow: 0 4px 14px rgba(99, 102, 241, 0.3);
-                transition: transform 0.1s, opacity 0.2s;
-            }
-            .btn-ai:hover { opacity: 0.95; transform: translateY(-1px); }
-            
-            #aiResult { 
-                margin-top: 16px; 
-                padding: 18px; 
-                background: rgba(15, 23, 42, 0.6); 
-                border: 1px solid #1e293b; 
-                border-left: 3px solid var(--accent-indigo); 
-                border-radius: var(--radius-md); 
-                font-size: 13px; 
-                color: #cbd5e1; 
-                white-space: pre-line; 
-                line-height: 1.7; 
-            }
-            
-            input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--accent-blue); cursor: pointer; }
-            /* 📱 모바일 전용 반응형 완벽 최적화 (768px 이하) */
-            @media (max-width: 768px) {
-                body {
-                    padding: 8px !important;
-                }
-                .container {
+            .todo-top-row {{
+                display: flex;
+                align-items: center;
+                gap: 10px;
+            }}
+
+            .badge-group {{
+                display: flex;
+                gap: 6px;
+                align-items: center;
+            }}
+
+            .badge {{
+                display: inline-block;
+                padding: 3px 8px;
+                border-radius: 4px;
+                font-size: 0.75rem;
+                font-weight: 600;
+                white-space: nowrap;
+            }}
+
+            .todo-title {{
+                flex: 1;
+                font-size: 0.95rem;
+                font-weight: 500;
+                word-break: break-all;
+            }}
+
+            .todo-actions {{
+                display: flex;
+                gap: 6px;
+            }}
+
+            .btn-action {{
+                background: #374151;
+                color: #d1d5db;
+                border: none;
+                padding: 6px 12px;
+                border-radius: 4px;
+                font-size: 0.8rem;
+                cursor: pointer;
+            }}
+
+            .btn-del {{ background: rgba(239, 68, 68, 0.2); color: #f87171; }}
+
+            .btn-ai {{
+                width: 100%;
+                background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+                color: white;
+                border: none;
+                padding: 12px;
+                border-radius: var(--radius-md);
+                font-weight: 600;
+                font-size: 0.95rem;
+                cursor: pointer;
+                margin-bottom: 12px;
+            }}
+
+            /* 📱 모바일 디바이스 완벽 최적화 (768px 이하) */
+            @media (max-width: 768px) {{
+                body {{ padding: 10px; }}
+                .kpi-grid {{ grid-template-columns: repeat(2, 1fr); gap: 8px; }}
+                .kpi-card {{ padding: 12px; }}
+                .kpi-value {{ font-size: 1.4rem; }}
+
+                /* 폼 요소를 모바일에서 세로 100% 배치 */
+                .form-grid {{
+                    flex-direction: column !important;
                     width: 100% !important;
-                    max-width: 100% !important;
-                    padding: 0 !important;
-                }
-                .header {
+                }}
+                .form-control, .btn-primary {{
+                    width: 100% !important;
+                }}
+
+                /* 업무 목록 카드를 모바일 세로 배치 */
+                .todo-card {{
                     flex-direction: column !important;
                     align-items: flex-start !important;
-                    gap: 6px !important;
-                }
-
-                /* KPI 카드 배치 */
-                .kpi-grid, .grid {
-                    grid-template-columns: repeat(2, 1fr) !important;
-                    gap: 8px !important;
-                }
-                .kpi-card {
-                    padding: 12px !important;
-                }
-
-                /* 신규 업무 일정 할당 - 세로 1열 정렬 (완성된 스타일) */
-                form, 
-                div[class*="form"],
-                .card form {
-                    display: flex !important;
-                    flex-direction: column !important;
-                    width: 100% !important;
                     gap: 10px !important;
-                }
+                }}
 
-                form input, 
-                form select, 
-                form button,
-                form textarea,
-                .card form * {
+                .todo-top-row {{
                     width: 100% !important;
-                    max-width: 100% !important;
-                    box-sizing: border-box !important;
-                    margin: 0 !important;
-                    height: 42px !important;
-                }
+                    justify-content: flex-start !important;
+                }}
 
-                /* 🎯 진행 중인 업무 목록 - 카드 형태 완벽 보정 */
-                /* 각 업무 항목 카드 강제 세로 배치 */
-                li, 
-                .todo-item, 
-                div[style*="border-bottom"],
-                div[style*="background"],
-                div[style*="padding"] {
-                    box-sizing: border-box !important;
-                }
-
-                /* 배지(높음, 업무, D-day) 글자 세로 찢어짐 방지 및 가로 정렬 */
-                span, div, a, p {
-                    writing-mode: horizontal-tb !important;
-                    word-break: break-word !important;
-                }
-
-                .badge, 
-                span[class*="badge"], 
-                div[class*="badge"],
-                span[style*="background"],
-                div[style*="background"] {
-                    display: inline-flex !important;
-                    align-items: center !important;
-                    justify-content: center !important;
-                    width: auto !important;
-                    min-width: unset !important;
-                    padding: 4px 10px !important;
-                    font-size: 0.78rem !important;
-                    white-space: nowrap !important;
-                    height: auto !important;
-                    line-height: 1.2 !important;
-                }
-
-                /* 카드 내부의 모든 가로 레이아웃을 세로 카드형 구조로 변경 */
-                .card div[style*="display: flex"],
-                .card div[style*="display:flex"],
-                div[style*="justify-content: space-between"] {
-                    flex-direction: column !important;
-                    align-items: flex-start !important;
+                .todo-title {{
                     width: 100% !important;
-                    gap: 10px !important;
-                }
+                    font-size: 0.9rem !important;
+                    line-height: 1.4 !important;
+                }}
 
-                /* 체크박스와 배지들을 묶는 영역은 가로로 정렬 */
-                div[style*="display: flex"] > div:first-child,
-                .todo-left-group {
+                .todo-actions {{
+                    width: 100% !important;
                     display: flex !important;
-                    flex-direction: row !important;
-                    flex-wrap: wrap !important;
-                    align-items: center !important;
                     gap: 8px !important;
-                    width: 100% !important;
-                }
+                }}
 
-                /* 수정/삭제 버튼 하단 넓은 버튼으로 배치 */
-                button[onclick*="delete"], 
-                button[onclick*="edit"],
-                a[href*="delete"], 
-                a[href*="edit"] {
-                    width: 48% !important;
+                .btn-action {{
+                    flex: 1 !important;
                     height: 38px !important;
-                    display: inline-flex !important;
-                    align-items: center !important;
-                    justify-content: center !important;
-                    margin-top: 4px !important;
-                }
-            }
+                    font-size: 0.85rem !important;
+                }}
+            }}
         </style>
     </head>
     <body>
-        <div class="header">
-            <div class="header-title">
-                <h1>Executive Task Intelligence</h1>
-                <p>Enterprise Management & AI-Powered Executive Assistant System</p>
-            </div>
-            <div class="status-badge">
-                <span class="status-dot"></span> System Live
-            </div>
-        </div>
-
-        <!-- KPI 실시간 대시보드 -->
-        <div class="kpi-grid">
-            <div class="kpi-card">
-                <div class="kpi-label">전체 등록 과제</div>
-                <div class="kpi-value" id="kpiTotal">0</div>
-            </div>
-            <div class="kpi-card">
-                <div class="kpi-label">미완료 핵심 과제</div>
-                <div class="kpi-value" id="kpiPending" style="color: var(--accent-amber);">0</div>
-            </div>
-            <div class="kpi-card">
-                <div class="kpi-label">프로젝트 완료율</div>
-                <div class="kpi-value" id="kpiRate" style="color: var(--accent-emerald);">0%</div>
-                <div class="progress-container">
-                    <div id="progressBar" class="progress-bar"></div>
+        <div class="container">
+            <div class="header">
+                <div>
+                    <h1>Executive Task Intelligence</h1>
+                    <div style="font-size: 0.8rem; color: var(--text-secondary);">Enterprise Management System</div>
+                </div>
+                <div class="status-badge">
+                    <span class="status-dot"></span> System Live
                 </div>
             </div>
-        </div>
 
-        <!-- 일과 등록 -->
-        <div class="card">
-            <div class="card-header">신규 업무 일정 할당</div>
-            <div class="form-grid">
-                <input type="date" id="dateInput">
-                <select id="catInput">
-                    <option value="업무">업무</option>
-                    <option value="R&D">R&D</option>
-                    <option value="회의">회의</option>
-                    <option value="개인">개인</option>
-                </select>
-                <select id="prioInput">
-                    <option value="높음">우선순위: 높음</option>
-                    <option value="보통" selected>우선순위: 보통</option>
-                    <option value="낮음">우선순위: 낮음</option>
-                </select>
-                <input type="text" id="taskInput" placeholder="담당 업무 세부 내용을 입력하세요...">
-                <button class="btn-submit" onclick="addTask()">등록</button>
+            <!-- KPI 실시간 대시보드 -->
+            <div class="kpi-grid">
+                <div class="kpi-card">
+                    <div class="kpi-label">전체 등록 과제</div>
+                    <div class="kpi-value" style="color: var(--accent-blue);">{total_count}</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-label">미완료 핵심 과제</div>
+                    <div class="kpi-value" style="color: var(--accent-amber);">{pending_count}</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-label">프로젝트 완료율</div>
+                    <div class="kpi-value" style="color: var(--accent-emerald);">{progress_rate}%</div>
+                </div>
             </div>
-        </div>
 
-        <!-- 업무 리스트 -->
-        <div class="card">
-            <div class="card-header">진행 중인 업무 목록</div>
-            <ul id="taskList">
-                <li style="color: var(--text-muted);">데이터를 불러오는 중입니다...</li>
-            </ul>
-        </div>
+            <!-- 신규 업무 할당 -->
+            <div class="card">
+                <div class="card-title">신규 업무 일정 할당</div>
+                <form action="/add" method="post" class="form-grid">
+                    <input type="date" name="date" value="{today_str}" class="form-control" required>
+                    <select name="category" class="form-control">
+                        <option value="업무">업무</option>
+                        <option value="미팅">미팅</option>
+                        <option value="프로젝트">프로젝트</option>
+                        <option value="기타">기타</option>
+                    </select>
+                    <select name="priority" class="form-control">
+                        <option value="보통">우선순위: 보통</option>
+                        <option value="높음">우선순위: 높음</option>
+                        <option value="낮음">우선순위: 낮음</option>
+                    </select>
+                    <input type="text" name="task" placeholder="담당 업무 세부 내용을 입력하세요..." class="form-control" style="flex:1;" required>
+                    <button type="submit" class="btn-primary">등록</button>
+                </form>
+            </div>
 
-        <!-- AI 수석 비서 브리핑 -->
-        <div class="card ai-card">
-            <div class="card-header">Gemini Executive AI Assistant</div>
-            <button class="btn-ai" onclick="getAISummary()">🤖 AI 실무 우선순위 & 리스크 브리핑 리포트 생성</button>
-            <div id="aiResult">버튼을 클릭하면 Gemini AI가 미완료 업무 데이터를 바탕으로 실행 가이드라인을 생성합니다.</div>
+            <!-- 진행 중인 업무 목록 -->
+            <div class="card">
+                <div class="card-title">진행 중인 업무 목록</div>
+                {items_html}
+            </div>
+
+            <!-- Gemini AI Assistant -->
+            <div class="card">
+                <div class="card-title">Gemini Executive AI Assistant</div>
+                <button class="btn-ai" onclick="getAiBriefing()">🤖 AI 실무 우선순위 & 리스크 브리핑 리포트 생성</button>
+                <div id="aiResult" style="display:none; background:#1f2937; padding:16px; border-radius:8px; font-size:0.9rem; white-space:pre-line; line-height:1.6; color:#e5e7eb;"></div>
+            </div>
         </div>
 
         <script>
-            document.getElementById('dateInput').value = new Date().toISOString().substring(0, 10);
-            window.onload = loadTasks;
+            async function toggleDone(id, isDone) {{
+                await fetch('/toggle/' + id + '?is_done=' + (isDone ? 1 : 0), {{ method: 'POST' }});
+                location.reload();
+            }}
 
-            async function loadTasks() {
-                const res = await fetch('/list');
-                const data = await res.json();
-                const tasks = data.일정목록 || [];
-                const listEl = document.getElementById('taskList');
-                listEl.innerHTML = '';
+            async function deleteTodo(id) {{
+                if (confirm('해당 과제를 삭제하시겠습니까?')) {{
+                    await fetch('/delete/' + id, {{ method: 'POST' }});
+                    location.reload();
+                }}
+            }}
 
-                let completedCount = 0;
+            async function editTodo(id, currentTask) {{
+                const newTask = prompt('수정할 업무 내용을 입력하세요:', currentTask);
+                if (newTask && newTask !== currentTask) {{
+                    await fetch('/edit/' + id + '?task=' + encodeURIComponent(newTask), {{ method: 'POST' }});
+                    location.reload();
+                }}
+            }}
 
-                if (tasks.length === 0) {
-                    listEl.innerHTML = '<li style="color: var(--text-muted); font-size:13px; justify-content:center;">등록된 업무가 없습니다.</li>';
-                    updateKPI(0, 0);
-                    return;
-                }
-
-                tasks.forEach(item => {
-                    if (item.is_done) completedCount++;
-
-                    let tagPrio = item.priority === '높음' ? 'tag-high' : (item.priority === '보통' ? 'tag-mid' : 'tag-low');
-                    
-                    const li = document.createElement('li');
-                    if (item.is_done) li.classList.add('done');
-
-                    li.innerHTML = `
-                        <div class="task-left">
-                            <input type="checkbox" ${item.is_done ? 'checked' : ''} onchange="toggleDone(${item.id})">
-                            <span class="tag ${tagPrio}">${item.priority}</span>
-                            <span class="tag tag-cat">${item.category}</span>
-                            <span class="tag tag-dday">${item.d_day}</span>
-                            <span class="task-title" style="font-size:13px;">[${item.date}] <strong>${item.task}</strong></span>
-                        </div>
-                        <div class="actions">
-                            <button class="btn-action" onclick="updateTask(${item.id}, '${item.date}', '${item.task}', '${item.category}', '${item.priority}')">수정</button>
-                            <button class="btn-action btn-del" onclick="deleteTask(${item.id})">삭제</button>
-                        </div>
-                    `;
-                    listEl.appendChild(li);
-                });
-
-                updateKPI(tasks.length, completedCount);
-            }
-
-            function updateKPI(total, completed) {
-                const pending = total - completed;
-                const rate = total === 0 ? 0 : Math.round((completed / total) * 100);
-
-                document.getElementById('kpiTotal').innerText = total;
-                document.getElementById('kpiPending').innerText = pending;
-                document.getElementById('kpiRate').innerText = rate + '%';
-                document.getElementById('progressBar').style.width = rate + '%';
-            }
-
-            async function addTask() {
-                const date = document.getElementById('dateInput').value;
-                const task = document.getElementById('taskInput').value;
-                const category = document.getElementById('catInput').value;
-                const priority = document.getElementById('prioInput').value;
-
-                if (!date || !task) { alert("날짜와 업무 내용을 입력해 주세요."); return; }
-
-                await fetch(`/add?date=${encodeURIComponent(date)}&task=${encodeURIComponent(task)}&category=${encodeURIComponent(category)}&priority=${encodeURIComponent(priority)}`, { method: 'POST' });
-                document.getElementById('taskInput').value = '';
-                loadTasks();
-            }
-
-            async function toggleDone(id) {
-                await fetch(`/toggle?item_id=${id}`, { method: 'PUT' });
-                loadTasks();
-            }
-
-            async function updateTask(id, curDate, curTask, curCat, curPrio) {
-                const newDate = prompt("수정할 날짜:", curDate); if (!newDate) return;
-                const newTask = prompt("수정할 업무 내용:", curTask); if (!newTask) return;
-
-                await fetch(`/update?item_id=${id}&date=${encodeURIComponent(newDate)}&task=${encodeURIComponent(newTask)}&category=${encodeURIComponent(curCat)}&priority=${encodeURIComponent(curPrio)}`, { method: 'PUT' });
-                loadTasks();
-            }
-
-            async function deleteTask(id) {
-                if (!confirm("해당 업무를 삭제하시겠습니까?")) return;
-                await fetch(`/delete?item_id=${id}`, { method: 'DELETE' });
-                loadTasks();
-            }
-
-            async function getAISummary() {
-                document.getElementById('aiResult').innerText = "⏳ Gemini AI가 업무 데이터를 분석하여 Executive 브리핑 보고서를 생성 중입니다...";
-                const res = await fetch('/summarize');
-                const data = await res.json();
-                document.getElementById('aiResult').innerText = data.AI브리핑결과;
-            }
+            async function getAiBriefing() {{
+                const resDiv = document.getElementById('aiResult');
+                resDiv.style.display = 'block';
+                resDiv.innerText = '🤖 Gemini AI가 미완료 업무 데이터를 분석 중입니다...';
+                
+                try {{
+                    const response = await fetch('/ai-briefing');
+                    const data = await response.json();
+                    resDiv.innerText = data.briefing;
+                }} catch (e) {{
+                    resDiv.innerText = '❌ 브리핑 생성 중 오류가 발생했습니다.';
+                }}
+            }}
         </script>
     </body>
     </html>
     """
+    return html_content
 
 
-# --- 2. 백엔드 API 기능 ---
-
-
+# --- API 엔드포인트 ---
 @app.post("/add")
-def add_task(
-    date: str, task: str, category: str = "업무", priority: str = "보통"
-):
+def add_todo(date: str = Form(...), task: str = Form(...), category: str = Form("업무"), priority: str = Form("보통")):
     conn = sqlite3.connect("todo.db")
     cursor = conn.cursor()
-    cursor.execute(
-        "INSERT INTO todos (date, task, category, priority, is_done) VALUES (?, ?, ?, ?, 0)",
-        (date, task, category, priority),
-    )
+    cursor.execute("INSERT INTO todos (date, task, category, priority) VALUES (?, ?, ?, ?)", (date, task, category, priority))
     conn.commit()
     conn.close()
-    return {"상태": "성공"}
+    return RedirectResponse(url="/", status_code=303)
 
 
-@app.get("/list")
-def get_tasks():
-    return {"일정목록": get_db_tasks()}
-
-
-@app.put("/toggle")
-def toggle_task(item_id: int):
+@app.post("/toggle/{todo_id}")
+def toggle_todo(todo_id: int, is_done: int):
     conn = sqlite3.connect("todo.db")
     cursor = conn.cursor()
-    cursor.execute(
-        "UPDATE todos SET is_done = CASE WHEN is_done = 1 THEN 0 ELSE 1 END WHERE id = ?",
-        (item_id,),
-    )
+    cursor.execute("UPDATE todos SET is_done = ? WHERE id = ?", (is_done, todo_id))
     conn.commit()
     conn.close()
-    return {"상태": "성공"}
+    return {"status": "success"}
 
 
-@app.put("/update")
-def update_task(
-    item_id: int,
-    date: str,
-    task: str,
-    category: str = "업무",
-    priority: str = "보통",
-):
+@app.post("/delete/{todo_id}")
+def delete_todo(todo_id: int):
     conn = sqlite3.connect("todo.db")
     cursor = conn.cursor()
-    cursor.execute(
-        "UPDATE todos SET date = ?, task = ?, category = ?, priority = ? WHERE id = ?",
-        (date, task, category, priority, item_id),
-    )
+    cursor.execute("DELETE FROM todos WHERE id = ?", (todo_id))
     conn.commit()
     conn.close()
-    return {"상태": "성공"}
+    return {"status": "success"}
 
 
-@app.delete("/delete")
-def delete_task(item_id: int):
+@app.post("/edit/{todo_id}")
+def edit_todo(todo_id: int, task: str):
     conn = sqlite3.connect("todo.db")
     cursor = conn.cursor()
-    cursor.execute("DELETE FROM todos WHERE id = ?", (item_id,))
+    cursor.execute("UPDATE todos SET task = ? WHERE id = ?", (task, todo_id))
     conn.commit()
     conn.close()
-    return {"상태": "성공"}
+    return {"status": "success"}
 
 
-@app.get("/summarize")
-def summarize_tasks():
-    all_tasks = get_db_tasks()
-    todo_tasks = [t for t in all_tasks if not t["is_done"]]
+@app.get("/ai-briefing")
+def ai_briefing():
+    if not GEMINI_API_KEY:
+        return {"briefing": "⚠️ Gemini API 키가 설정되지 않았습니다. Render 환경변수에 GEMINI_API_KEY를 등록해 주세요."}
 
-    if not todo_tasks:
-        return {
-            "AI브리핑결과": "🎉 [Executive Report] 현재 미완료된 업무 과제가 없습니다. 주요 리스크가 소멸되었습니다."
-        }
+    conn = sqlite3.connect("todo.db")
+    cursor = conn.cursor()
+    cursor.execute("SELECT date, task, category, priority FROM todos WHERE is_done = 0 ORDER BY date ASC")
+    pending = cursor.fetchall()
+    conn.close()
 
-    prompt = f"""
-    당신은 대기업 수석 경영전략 컨설턴트 및 AI 수석 비서입니다.
-    아래는 사용자의 [미완료 실무 업무 목록 데이터]입니다:
-    {todo_tasks}
+    if not pending:
+        return {"briefing": "🎉 현재 미완료된 과제가 없습니다! 완벽하게 업무를 처리하셨습니다."}
 
-    위 데이터를 바탕으로 최고 경영진(Executive) 보고용 브리핑 리포트를 작성해 주세요:
-    1. 🎯 [최우선 과제 (Top Priority Task)]: D-Day 마감 임박 및 우선순위 최상위 항목 지정
-    2. 💡 [실행 로드맵 (Actionable Steps)]: 효율적 리소스 배분을 위한 2~3줄 가이드
-    3. ⚠️ [마감 리스크 관리 (Deadline Risk)]: 주의가 필요한 과제 경고
-    """
+    todo_text = "\n".join([f"- [{p[0]}] [{p[2]}/{p[3]}] {p[1]}" for p in pending])
+    prompt = f"다음은 현재 미완료된 경영 일정 및 업무 리스트입니다:\n{todo_text}\n\n경영진을 위해 업무 우선순위 분석 및 실행 리스크 브리핑 리포트를 간결하게 작성해 주세요."
 
-    client = genai.Client(api_key=GEMINI_API_KEY)
-    response = client.models.generate_content(
-        model="gemini-3.8-flash", contents=prompt
-    )
-
-    return {"AI브리핑결과": response.text}
+    try:
+        client = genai.Client(api_key=GEMINI_API_KEY)
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=prompt,
+        )
+        return {"briefing": response.text}
+    except Exception as e:
+        return {"briefing": f"❌ Gemini AI 호출 실패: {str(e)}"}
