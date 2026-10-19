@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 import sqlite3
 
 # todo.db라는 이름의 메모장 파일을 엽니다. (없으면 새로 생성됩니다)
@@ -18,4 +19,26 @@ CREATE TABLE IF NOT EXISTS todos (
 
 conn.commit()
 conn.close()
+=======
+import sqlite3
+
+# todo.db라는 이름의 메모장 파일을 엽니다. (없으면 새로 생성됩니다)
+conn = sqlite3.connect("todo.db")
+cursor = conn.cursor()
+
+# 일정표 상자를 만듭니다 (날짜, 할 일, 완료 여부)
+cursor.execute(
+    """
+CREATE TABLE IF NOT EXISTS todos (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    date TEXT,
+    task TEXT,
+    is_done INTEGER DEFAULT 0
+)
+"""
+)
+
+conn.commit()
+conn.close()
+>>>>>>> ef5a3f06f1dc352f0d4d79c1b09335d616a91269
 print("🎉 축하합니다! 일정 저장용 메모장(todo.db)이 완벽하게 만들어졌습니다!")

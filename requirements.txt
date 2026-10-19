@@ -1,4 +1,10 @@
+<<<<<<< HEAD
 fastapi
 uvicorn
 google-genai
+=======
+fastapi
+uvicorn
+google-genai
+>>>>>>> ef5a3f06f1dc352f0d4d79c1b09335d616a91269
 python-multipart
