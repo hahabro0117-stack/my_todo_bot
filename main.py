@@ -521,25 +521,21 @@ def ai_briefing():
     todo_text = "\n".join([f"- [{p[0]}] [{p[2]}/{p[3]}] {p[1]}" for p in pending])
     prompt = f"다음은 현재 미완료된 경영 일정 및 업무 리스트입니다:\n{todo_text}\n\n경영진을 위해 업무 우선순위 분석 및 실행 리스크 브리핑 리포트를 간결하게 작성해 주세요."
 
-    # 호출할 모델 우선순위 목록 (3.8-flash 과부하 시 2.0-flash로 자동 전환)
-    models_to_try = ["gemini-3.8-flash", "gemini-2.0-flash"]
+    # 호출할 모델 우선순위 (3.8-flash -> 2.0-flash -> 1.5-flash 순으로 자동 전환)
+    models_to_try = ["gemini-3.8-flash", "gemini-2.0-flash", "gemini-1.5-flash"]
     last_error = ""
 
     for model_name in models_to_try:
-        # 모델당 최대 2회 시도
-        for attempt in range(2):
-            try:
-                client = genai.Client(api_key=GEMINI_API_KEY)
-                response = client.models.generate_content(
-                    model=model_name,
-                    contents=prompt,
-                )
-                return {"briefing": response.text}
-            except Exception as e:
-                last_error = str(e)
-                if "503" in last_error and attempt < 1:
-                    time.sleep(1.5)
-                    continue
-                break  # 다음 백업 모델로 이동
+        try:
+            client = genai.Client(api_key=GEMINI_API_KEY)
+            response = client.models.generate_content(
+                model=model_name,
+                contents=prompt,
+            )
+            return {"briefing": response.text}
+        except Exception as e:
+            last_error = str(e)
+            time.sleep(1)
+            continue  # 다음 백업 모델로 이동
 
     return {"briefing": f"❌ Gemini AI 호출 실패: {last_error}"}
