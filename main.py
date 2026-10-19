@@ -12,7 +12,7 @@ app = FastAPI(
 )
 
 # 발급받으신 Gemini API 키
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")css
 
 
 # --- DB 초기화 및 관리 ---
@@ -78,10 +78,12 @@ def home_page():
     return """
     <!DOCTYPE html>
     <html lang="ko">
-    <head>
-        <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1">
-        <title>Task Intelligence Platform</title>
+   <head>
+    <meta charset="UTF-8">
+    <!-- 모바일 비율 자동 조절을 위한 필수 메타 태그 (추가/확인) -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+    <title>Executive Task Intelligence</title>
+    ...
         <link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
         <style>
             :root {
@@ -248,6 +250,47 @@ def home_page():
             }
             
             input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--accent-blue); cursor: pointer; }
+            /* 📱 모바일 디바이스 최적화 (768px 이하) */
+            @media (max-width: 768px) {
+                body {
+                    padding: 10px !important;
+                }
+                .container {
+                    padding: 8px !important;
+                    width: 100% !important;
+                }
+                /* 그리드 및 카드 레이아웃 모바일 1열/2열 자동 세로 정렬 */
+                .kpi-grid, .grid {
+                    grid-template-columns: repeat(2, 1fr) !important;
+                    gap: 10px !important;
+                }
+                .kpi-card {
+                    padding: 12px !important;
+                }
+                .kpi-value {
+                    font-size: 1.4rem !important;
+                }
+                .card {
+                    padding: 12px !important;
+                }
+                /* 테이블 좌우 터치 스크롤 처리 */
+                .table-responsive {
+                    width: 100% !important;
+                    overflow-x: auto !important;
+                    -webkit-overflow-scrolling: touch;
+                }
+                table {
+                    min-width: 550px !important;
+                }
+                th, td {
+                    padding: 8px 10px !important;
+                    font-size: 0.82rem !important;
+                }
+                /* 타이틀 크기 조정 */
+                h1 {
+                    font-size: 1.25rem !important;
+                }
+            }
         </style>
     </head>
     <body>
