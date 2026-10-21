@@ -1,3 +1,6 @@
+import json  # <-- 이 줄을 최상단 모듈 import 구문 모음에 추가해주세요
+from fastapi import FastAPI
+# ... 기존 다른 import 구문들 ...
 import datetime
 import html
 import os
