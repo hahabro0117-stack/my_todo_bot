@@ -3,6 +3,7 @@ import html
 import os
 import sqlite3
 import time
+import requests
 from fastapi import FastAPI, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from google import genai
@@ -544,3 +545,65 @@ def ai_briefing():
             break
 
     return {"briefing": f"❌ Gemini AI 호출 실패: {last_error}"}
+    # --- 카카오톡 브리핑 자동 전송 로직 ---
+KAKAO_REST_API_KEY = os.environ.get("KAKAO_REST_API_KEY", "fabe47f0fc6f4538cecbebac85563634")
+KAKAO_REFRESH_TOKEN = os.environ.get("KAKAO_REFRESH_TOKEN", "")
+
+def get_kakao_access_token():
+    url = "https://kauth.kakao.com/oauth/token"
+    data = {
+        "grant_type": "refresh_token",
+        "client_id": KAKAO_REST_API_KEY,
+        "refresh_token": KAKAO_REFRESH_TOKEN
+    }
+    try:
+        res = requests.post(url, data=data)
+        return res.json().get("access_token")
+    except Exception as e:
+        print(f"Token Error: {e}")
+        return None
+
+@app.get("/send-kakao-summary")
+def send_kakao_summary():
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT date, task, category, priority FROM todos WHERE is_done = 0 ORDER BY date ASC")
+    pending = cursor.fetchall()
+    conn.close()
+
+    if not pending:
+        summary_text = "🎉 [Executive Task Intelligence]\n오늘 예정된 미완료 과제가 없습니다! 즐거운 하루 보내세요."
+    else:
+        todo_text = "\n".join([f"- [{p[0]}] [{p[2]}/{p[3]}] {p[1]}" for p in pending])
+        
+        try:
+            client = genai.Client(api_key=GEMINI_API_KEY)
+            ai_res = client.models.generate_content(
+                model="gemini-3.8-flash",
+                contents=f"다음 업무 목록을 경영진 브리핑용으로 3줄 이내 핵심 요약해줘:\n{todo_text}"
+            )
+            ai_summary = ai_res.text
+        except Exception as e:
+            ai_summary = "AI 요약 생성 생략 (목록 직관 확인)"
+
+        summary_text = f"☀️ [아침 8:30 업무 브리핑]\n\n📋 미완료 업무 목록:\n{todo_text}\n\n🤖 AI 리포트:\n{ai_summary}"
+
+    access_token = get_kakao_access_token()
+    if not access_token:
+        return {"status": "error", "message": "카카오 Access Token 발급 실패"}
+
+    headers = {"Authorization": f"Bearer {access_token}"}
+    payload = {
+        "template_object": json.dumps({
+            "object_type": "text",
+            "text": summary_text[:1000],
+            "link": {
+                "web_url": "https://my-todo-bot-ece9.onrender.com",
+                "mobile_web_url": "https://my-todo-bot-ece9.onrender.com"
+            },
+            "button_title": "대시보드 열기"
+        })
+    }
+
+    res = requests.post("https://kapi.kakao.com/v2/api/talk/memo/default/send", headers=headers, data=payload)
+    return res.json()
