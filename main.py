@@ -13,7 +13,9 @@ app = FastAPI(
     description="최고급 SaaS 대시보드 UI 및 Gemini AI 기반 경영진 브리핑 시스템입니다.",
     version="4.0.0",
 )
-
+@app.get("/ping")
+def ping():
+    return "pong"
 # 발급받으신 Gemini API 키 (서버 환경변수에서 로드)
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 
